@@ -27,6 +27,18 @@ const NAMES := {
 	"freeze": "FREEZE",
 }
 
+const EFFECT_COLORS := {
+	"laser": Color(1.0, 0.3, 0.35),
+	"paddleup": Color(1.0, 0.8, 0.2),
+	"slowtime": Color(0.5, 0.55, 1.0),
+	"magnet": Color(0.78, 0.45, 1.0),
+	"speedup": Color(0.3, 1.0, 0.5),
+	"fireball": Color(1.0, 0.55, 0.15),
+	"freeze": Color(0.55, 0.92, 1.0),
+	"shield": Color(0.35, 0.9, 1.0),
+	"bomb": Color(1.0, 0.3, 0.8),
+}
+
 var _root: Control
 var _score_value: Label
 var _best_value: Label
@@ -36,6 +48,11 @@ var _effects_box: VBoxContainer
 var _no_effect: Label
 var _effect_rows: Dictionary = {}
 var _sound_btn: TextureButton
+var _fx_style: StyleBoxFlat
+var _lives_style: StyleBoxFlat
+var _lives_title: Label
+var _lives_flash_tween: Tween
+var _heart_nodes: Array = []
 
 var _ready_box: Panel
 var _ready_title: Label
@@ -141,15 +158,12 @@ func _build_left() -> void:
 	_score_value = _stat_panel(_root, Vector2(24, 100), "SCORE")
 	_best_value = _stat_panel(_root, Vector2(24, 206), "BEST SCORE")
 	_level_value = _stat_panel(_root, Vector2(24, 312), "LEVEL")
-	var help := _panel(_root, Vector2(24, 560), Vector2(212, 132), Color(0.3, 0.5, 0.9))
-	var txt := "GERAK\nmouse / jari / A-D / panah\n\nLUNCURKAN\nklik / tap / spasi\n\nJEDA:  P / Esc"
-	var l := _label(help, txt, 12, Color(0.7, 0.8, 1.0), Vector2(0, 6), Vector2(212, 120), Color(0, 0, 0, 0))
-	l.add_theme_constant_override("line_spacing", -2)
 
 
 func _build_right() -> void:
 	var lives_panel := _panel(_root, Vector2(1044, 100), Vector2(212, 92), MAGENTA)
-	_label(lives_panel, "LIVES", 16, Color(1.0, 0.8, 0.92), Vector2(0, 8), Vector2(212, 22), MAGENTA)
+	_lives_style = lives_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	_lives_title = _label(lives_panel, "LIVES", 16, Color(1.0, 0.8, 0.92), Vector2(0, 8), Vector2(212, 22), MAGENTA)
 	_hearts = HBoxContainer.new()
 	_hearts.position = Vector2(0, 38)
 	_hearts.size = Vector2(212, 42)
@@ -159,12 +173,13 @@ func _build_right() -> void:
 	lives_panel.add_child(_hearts)
 
 	var fx_panel := _panel(_root, Vector2(1044, 206), Vector2(212, 282))
+	_fx_style = fx_panel.get_theme_stylebox("panel") as StyleBoxFlat
 	_label(fx_panel, "POWER-UP", 16, Color(0.75, 0.92, 1.0), Vector2(0, 8), Vector2(212, 22))
-	_no_effect = _label(fx_panel, "-", 18, Color(0.5, 0.6, 0.8), Vector2(0, 40), Vector2(212, 40))
+	_no_effect = _label(fx_panel, "TIDAK ADA\nPOWER-UP AKTIF", 14, Color(0.35, 0.45, 0.65), Vector2(0, 90), Vector2(212, 70), Color(0, 0, 0, 0))
 	_effects_box = VBoxContainer.new()
 	_effects_box.position = Vector2(14, 38)
 	_effects_box.size = Vector2(184, 236)
-	_effects_box.add_theme_constant_override("separation", 6)
+	_effects_box.add_theme_constant_override("separation", 4)
 	_effects_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	fx_panel.add_child(_effects_box)
 
@@ -182,7 +197,7 @@ func _build_ready_box() -> void:
 	_ready_box = _panel(_root, Vector2(ARENA_CENTER.x - 210, 390), Vector2(420, 150))
 	_ready_title = _label(_ready_box, "LEVEL 1-1", 34, Color.WHITE, Vector2(0, 12), Vector2(420, 46))
 	_ready_hint = _label(_ready_box, "TAP / KLIK UNTUK MELUNCURKAN", 18, Color(1.0, 0.45, 0.85), Vector2(0, 66), Vector2(420, 30), MAGENTA)
-	_label(_ready_box, "geser mouse / jari untuk menggerakkan paddle", 12, Color(0.65, 0.75, 0.95), Vector2(0, 106), Vector2(420, 24), Color(0, 0, 0, 0))
+	_label(_ready_box, "mouse / jari / A-D / panah  •  P / Esc = jeda", 12, Color(0.65, 0.75, 0.95), Vector2(0, 106), Vector2(420, 24), Color(0, 0, 0, 0))
 	_ready_box.hide()
 
 
@@ -252,25 +267,56 @@ func _icon_row(parent: Control, pos: Vector2, width: float) -> void:
 	home.pressed.connect(func() -> void: home_pressed.emit())
 
 
-func _make_effect_row(key: String) -> HBoxContainer:
+func _make_effect_row(key: String) -> PanelContainer:
+	var fx_color: Color = EFFECT_COLORS.get(key, CYAN)
+
+	var box := PanelContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(fx_color, 0.14)
+	sb.border_color = fx_color
+	sb.set_border_width_all(1)
+	sb.border_width_left = 3
+	sb.set_corner_radius_all(6)
+	sb.shadow_color = Color(fx_color, 0.45)
+	sb.shadow_size = 6
+	sb.set_content_margin_all(3)
+	sb.content_margin_left = 6
+	box.add_theme_stylebox_override("panel", sb)
+
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(row)
+
 	var icon := TextureRect.new()
 	icon.texture = Global.tex("pu_" + key)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.custom_minimum_size = Vector2(32, 32)
+	icon.custom_minimum_size = Vector2(28, 28)
 	row.add_child(icon)
+
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_theme_constant_override("separation", 2)
 	row.add_child(col)
+
+	var top := HBoxContainer.new()
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(top)
 	var name_label := Label.new()
 	name_label.text = String(NAMES.get(key, key)).to_upper()
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.add_theme_font_override("font", Global.font_bold)
 	name_label.add_theme_font_size_override("font_size", 13)
-	col.add_child(name_label)
+	name_label.add_theme_color_override("font_color", fx_color.lightened(0.45))
+	top.add_child(name_label)
+	var time_label := Label.new()
+	time_label.add_theme_font_override("font", Global.font_bold)
+	time_label.add_theme_font_size_override("font_size", 12)
+	time_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	top.add_child(time_label)
+
 	var bar := ProgressBar.new()
 	bar.show_percentage = false
 	bar.custom_minimum_size = Vector2(0, 8)
@@ -278,14 +324,18 @@ func _make_effect_row(key: String) -> HBoxContainer:
 	bg.bg_color = Color(0.1, 0.15, 0.3)
 	bg.set_corner_radius_all(3)
 	var fill := StyleBoxFlat.new()
-	fill.bg_color = CYAN
+	fill.bg_color = fx_color
 	fill.set_corner_radius_all(3)
 	bar.add_theme_stylebox_override("background", bg)
 	bar.add_theme_stylebox_override("fill", fill)
 	col.add_child(bar)
-	row.set_meta("bar", bar)
-	_effects_box.add_child(row)
-	return row
+
+	box.set_meta("bar", bar)
+	box.set_meta("time", time_label)
+	box.set_meta("born", Time.get_ticks_msec() * 0.001)
+	box.modulate.a = 0.0
+	_effects_box.add_child(box)
+	return box
 
 
 # ---------------------------------------------------------------- API
@@ -303,16 +353,65 @@ func set_level(text: String) -> void:
 
 
 func set_lives(n: int) -> void:
-	for c in _hearts.get_children():
-		_hearts.remove_child(c)
-		c.queue_free()
-	for i in n:
-		var h := TextureRect.new()
-		h.texture = Global.tex("heart")
-		h.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		h.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		h.custom_minimum_size = Vector2(34, 32)
-		_hearts.add_child(h)
+	n = maxi(n, 0)
+	var prev: int = _heart_nodes.size()
+	if n < prev:
+		for _i in prev - n:
+			var lost: TextureRect = _heart_nodes.pop_back()
+			_animate_heart_loss(lost)
+		_flash_lives_panel()
+	elif n > prev:
+		for _i in n - prev:
+			var h := _make_heart()
+			_hearts.add_child(h)
+			_heart_nodes.append(h)
+			_animate_heart_gain(h)
+
+
+func _make_heart() -> TextureRect:
+	var h := TextureRect.new()
+	h.texture = Global.tex("heart")
+	h.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	h.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	h.custom_minimum_size = Vector2(34, 32)
+	h.pivot_offset = h.custom_minimum_size * 0.5
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return h
+
+
+func _animate_heart_gain(h: TextureRect) -> void:
+	h.scale = Vector2.ZERO
+	h.modulate = Color(2.0, 1.8, 0.8)
+	var tw := h.create_tween().set_parallel(true)
+	tw.tween_property(h, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(h, "modulate", Color.WHITE, 0.4)
+
+
+func _animate_heart_loss(h: TextureRect) -> void:
+	var tw := h.create_tween()
+	tw.tween_property(h, "modulate", Color(3.0, 0.3, 0.3, 1.0), 0.08)
+	tw.parallel().tween_property(h, "scale", Vector2(1.5, 1.5), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	for _i in 2:
+		tw.tween_property(h, "modulate:a", 0.2, 0.07)
+		tw.tween_property(h, "modulate:a", 1.0, 0.07)
+	tw.tween_property(h, "scale", Vector2.ZERO, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(h, "modulate:a", 0.0, 0.18)
+	tw.tween_callback(h.queue_free)
+
+
+func _flash_lives_panel() -> void:
+	var red := Color(1.0, 0.15, 0.2)
+	if _lives_flash_tween:
+		_lives_flash_tween.kill()
+	_lives_style.border_color = red
+	_lives_style.shadow_color = Color(red, 0.8)
+	_lives_title.add_theme_color_override("font_color", red)
+	_lives_flash_tween = create_tween().set_parallel(true)
+	_lives_flash_tween.tween_property(_lives_style, "border_color", MAGENTA, 0.6)
+	_lives_flash_tween.tween_property(_lives_style, "shadow_color", Color(MAGENTA, 0.35), 0.6)
+	_lives_flash_tween.tween_method(
+		func(c: Color) -> void: _lives_title.add_theme_color_override("font_color", c),
+		red, Color(1.0, 0.8, 0.92), 0.6)
 
 
 func powerup_name(key: String) -> String:
@@ -331,12 +430,40 @@ func update_effects(effects: Dictionary, totals: Dictionary, shield: bool, bomb:
 		if not active.has(k):
 			_effect_rows[k].queue_free()
 			_effect_rows.erase(k)
+
+	var now: float = Time.get_ticks_msec() * 0.001
 	for k in active.keys():
 		if not _effect_rows.has(k):
 			_effect_rows[k] = _make_effect_row(k)
-		var bar: ProgressBar = _effect_rows[k].get_meta("bar")
-		bar.value = float(active[k]) * 100.0
+		var row: PanelContainer = _effect_rows[k]
+		var frac: float = active[k]
+		(row.get_meta("bar") as ProgressBar).value = frac * 100.0
+		var timed: bool = effects.has(k)
+		if timed:
+			(row.get_meta("time") as Label).text = "%.1fs" % maxf(float(effects[k]), 0.0)
+		else:
+			(row.get_meta("time") as Label).text = "SIAP"
+
+		# Muncul dengan kilatan, berkedip saat hampir habis, shield/bomb berdenyut pelan
+		var appear: float = clampf((now - float(row.get_meta("born"))) / 0.25, 0.0, 1.0)
+		var glow: float = 1.0 + (1.0 - appear) * 1.2
+		var blink: float = 1.0
+		if timed and frac < 0.25:
+			blink = 0.55 + 0.45 * sin(now * 14.0)
+		elif not timed:
+			blink = 0.85 + 0.15 * sin(now * 5.0)
+		row.modulate = Color(glow, glow, glow, appear * blink)
+
+	# Border panel mengikuti warna power-up terbaru
+	var target: Color = CYAN
+	if not active.is_empty():
+		target = EFFECT_COLORS.get(active.keys().back(), CYAN)
+	_fx_style.border_color = _fx_style.border_color.lerp(target, 0.15)
+	_fx_style.shadow_color = Color(_fx_style.border_color, 0.35 if active.is_empty() else 0.6)
+
 	_no_effect.visible = active.is_empty()
+	if _no_effect.visible:
+		_no_effect.modulate.a = 0.6 + 0.25 * sin(now * 2.0)
 
 
 func show_ready(level_text: String) -> void:
